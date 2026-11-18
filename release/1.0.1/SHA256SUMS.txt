@@ -1,0 +1,3 @@
+ba0f3411a9accf907563fd9bbdcb941520a139e11a41363dd39e04a8a2c6423a  PyUpdateCore-v1.0.1-SDK-Windows-x64.zip
+0c52e1bbfa02f8d9f1dd85c211f4e83ce86ef6363a6384dc58829893367384fa  PyUpdateCore-v1.0.1-Source.zip
+bcd5eb1b01ce3a9e40ae820a16dbe54830e32a612329acb6287dd15f06cbaad4  PyUpdateCore-v1.0.1.exe

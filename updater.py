@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ def _ask(question: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    multiprocessing.freeze_support()
     parser = argparse.ArgumentParser(description=f"PyUpdateCore {ENGINE_VERSION}")
     parser.add_argument("action", nargs="?", choices=("check", "download", "serve"))
     parser.add_argument("--stdio", action="store_true", help="run the JSON Lines IPC server")
@@ -29,8 +31,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--threads", type=int, choices=(1, 4, 16))
     parser.add_argument("--json-output", action="store_true")
     parser.add_argument("--yes", action="store_true", help="confirm configured operations non-interactively")
+    parser.add_argument("--install-worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--installer-path", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--manifest-json", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     root = (args.data_root if args.data_root else _base_dir()).resolve()
+    if args.install_worker:
+        if args.installer_path is None or not args.manifest_json:
+            parser.error("--install-worker requires installer data")
+        from update_core.ipc import run_install_worker
+        return run_install_worker(str(root), str(args.installer_path), args.manifest_json, args.process_id)
     if args.action == "serve" or args.stdio:
         from update_core.ipc import serve_stdio
         return serve_stdio(root)
@@ -82,7 +92,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"更新失败：{exc}", file=sys.stderr)
         return 2
     except OSError as exc:
-        print(f"更新失败：系统操作失败：{exc}", file=sys.stderr)
+        if args.json_output:
+            print(json.dumps({"status": "error", "code": type(exc).__name__, "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        else:
+            print(f"更新失败：系统操作失败：{exc}", file=sys.stderr)
         return 2
 
 

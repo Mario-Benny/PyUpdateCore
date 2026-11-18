@@ -1,7 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "PyUpdateCore Proxy Probe (Test)",
-  "version": "0.0.1",
-  "permissions": ["proxy", "nativeMessaging"],
-  "background": {"service_worker": "service_worker.js"}
-}

@@ -1,7 +1,0 @@
-{
-  "name": "com.pyupdatecore.proxy_probe",
-  "description": "PyUpdateCore test-only proxy probe host",
-  "path": "REPLACE_WITH_ABSOLUTE_HOST_LAUNCHER_PATH",
-  "type": "stdio",
-  "allowed_origins": ["chrome-extension://REPLACE_WITH_EXTENSION_ID/"]
-}

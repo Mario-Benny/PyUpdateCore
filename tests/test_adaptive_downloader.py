@@ -6,14 +6,14 @@ import time
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 
 import httpx
 import pytest
 
 from update_core.config import create_config_template, load_config
 from update_core.downloader import Downloader
-from update_core.errors import DownloadError, RangeUnsupportedError
+from update_core.errors import CancelledError, DownloadError, RangeUnsupportedError
 from update_core.models import InstallerAsset
 from update_core.storage import UpdateLock, merge_state, read_json
 
@@ -158,6 +158,33 @@ class _LocalRangeHandler(BaseHTTPRequestHandler):
         pass
 
 
+class _SlowRangeHandler(_LocalRangeHandler):
+    first_body = Event()
+
+    def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
+        requested = self.headers.get("Range")
+        if requested:
+            self.__class__.ranges.append(requested)
+            start, end = (int(value) for value in requested.removeprefix("bytes=").split("-"))
+            body = self.content[start : end + 1]
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(self.content)}")
+        else:
+            body = self.content
+            self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", '"slow-v1"')
+        self.end_headers()
+        for offset in range(0, len(body), 4096):
+            try:
+                self.wfile.write(body[offset : offset + 4096])
+                self.wfile.flush()
+                self.__class__.first_body.set()
+                time.sleep(0.004)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
+
+
 @pytest.mark.parametrize("threads", [4, 16])
 def test_real_threaded_range_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, threads: int) -> None:
     """A controlled loopback exception validates actual concurrent HTTP requests."""
@@ -165,7 +192,7 @@ def test_real_threaded_range_server(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     _LocalRangeHandler.ranges = []
     server = ThreadingHTTPServer(("127.0.0.1", 0), _LocalRangeHandler)
     Thread(target=server.serve_forever, daemon=True).start()
-    monkeypatch.setattr("update_core.downloader.validate_url", lambda url, config: url)
+    monkeypatch.setattr("update_core.network.validate_url", lambda url, config: url)
     try:
         config = replace(_config(tmp_path), require_https=False)
         url = f"http://127.0.0.1:{server.server_port}/asset.bin"
@@ -174,6 +201,42 @@ def test_real_threaded_range_server(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         result = Downloader(config, tmp_path / "downloads", tmp_path / "State.json").download(asset, threads=threads)
         assert result.read_bytes() == content
         assert len(_LocalRangeHandler.ranges) == threads + 1  # probe + every segment
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("threads", [1, 4, 16])
+def test_cancelled_download_resumes_for_all_thread_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, threads: int) -> None:
+    """Cancellation leaves valid parts, and a new Downloader resumes them safely."""
+    _SlowRangeHandler.content = bytes(range(256)) * 1024
+    _SlowRangeHandler.ranges = []
+    _SlowRangeHandler.first_body = Event()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowRangeHandler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr("update_core.network.validate_url", lambda url, config: url)
+    try:
+        content = _SlowRangeHandler.content
+        config = replace(_config(tmp_path), require_https=False, proxy_mode="direct")
+        asset = InstallerAsset("package.bin", f"http://127.0.0.1:{server.server_port}/asset.bin", len(content), hashlib.sha256(content).hexdigest())
+        cancel = Event()
+        failures: list[Exception] = []
+
+        def interrupted() -> None:
+            try:
+                Downloader(config, tmp_path / "downloads", tmp_path / "State.json", cancel_event=cancel).download(asset, threads=threads)
+            except Exception as exc:
+                failures.append(exc)
+
+        worker = Thread(target=interrupted)
+        worker.start()
+        assert _SlowRangeHandler.first_body.wait(3)
+        cancel.set()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+        assert len(failures) == 1 and isinstance(failures[0], CancelledError)
+        result = Downloader(config, tmp_path / "downloads", tmp_path / "State.json").download(asset, threads=threads)
+        assert result.read_bytes() == content
     finally:
         server.shutdown()
         server.server_close()

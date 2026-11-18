@@ -20,12 +20,15 @@ Every request requires protocol version 1, `type: "request"`, a non-empty reques
 | `check` | Check update; params.current_version overrides config / 检查更新 |
 | `download` | Start background download; threads 1, 4 or 16 / 后台下载 |
 | `cancel` | Request task cancellation / 请求取消 |
+| `install` | Handoff one completed, verified download by `params.task_id` / 安装已验证任务 |
 | `shutdown` | Reply then exit / 正常关闭 |
 
 ## Response and events / 响应与事件
 
 ```json
-{"protocol_version":1,"type":"response","request_id":"req-1","success":true,"result":{"engine_name":"PythonUpdateCore","engine_version":"1.0.0","protocol_version":1}}
+{"protocol_version":1,"type":"response","request_id":"req-1","success":true,"result":{"engine_name":"PythonUpdateCore","engine_version":"1.0.1","protocol_version":1}}
 ```
 
 Failures return `success:false` with `error.code` and `error.message`. Download progress uses `type:"event"`, and completion emits `task_finished`. Invalid JSON and unknown commands are structured errors; this protocol never executes arbitrary commands, scripts, or paths.
+
+`cancel` first returns `cancelling`; terminal `cancelled` is emitted only after all download workers stop and resume state is saved. `shutdown` cancels active download tasks and waits for their cooperative termination before responding `shutdown_completed`. `install` never accepts a path: it re-verifies the cached installer attached to the specified completed task, then emits `install_handoff` when the installer process has been created. This is a handoff result, not an assertion that installation finished. Automatic restart and installer deletion are intentionally unsupported.

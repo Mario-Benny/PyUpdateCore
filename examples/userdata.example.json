@@ -3,7 +3,7 @@
   "application": {"id": "com.example.app", "name": "Example App"},
   "current_version": {"source": "static", "value": "1.2.2", "path": "", "json_key": "version"},
   "update_source": {"provider": "manifest", "manifest_url": "https://github.com/OWNER/REPO/releases/latest/download/update.json", "channel": "stable"},
-  "installer": {"wait_for_main_program": true, "request_admin": true, "arguments": [], "delete_after_install": false},
+  "installer": {"wait_for_main_program": true, "wait_timeout_seconds": 600, "request_admin": true, "arguments": [], "delete_after_install": false},
   "restart": {"enabled": false, "program_path": "", "arguments": []},
   "interface": {"language": "zh-CN", "show_progress": true, "confirm_before_download": true, "confirm_before_install": true}
 }

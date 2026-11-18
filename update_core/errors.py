@@ -32,7 +32,3 @@ class RangeUnsupportedError(DownloadError):
 
 class CancelledError(DownloadError):
     pass
-
-
-class SignatureError(ManifestError if 'ManifestError' in globals() else UpdaterError):
-    pass

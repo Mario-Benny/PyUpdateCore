@@ -5,11 +5,15 @@ import copy
 import os
 import tempfile
 import errno
+import threading
+import time
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
-from .errors import LockError
+from .errors import ConfigError, LockError
+
+_STATE_LOCK = threading.Lock()
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -28,6 +32,7 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def read_json(path: Path, *, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Lenient reader for disposable per-download resume records only."""
     if not path.is_file():
         return {} if default is None else copy.deepcopy(default)
     try:
@@ -35,6 +40,61 @@ def read_json(path: Path, *, default: dict[str, Any] | None = None) -> dict[str,
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {} if default is None else copy.deepcopy(default)
     return data if isinstance(data, dict) else ({} if default is None else copy.deepcopy(default))
+
+
+def read_config_json(path: Path) -> dict[str, Any]:
+    """Read user-controlled configuration without hiding corruption."""
+    if not path.is_file():
+        raise ConfigError(f"配置文件不存在：{path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"配置文件损坏或无法读取：{path}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"配置文件根节点必须是对象：{path}")
+    return data
+
+
+def _record_state_recovery(path: Path, reason: str, quarantined: Path | None) -> None:
+    log_path = path.parent.parent / "logs" / "state_recovery.jsonl"
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "event": "state_quarantined",
+            "state_path": str(path),
+            "quarantined_path": str(quarantined) if quarantined else None,
+            "reason": reason,
+        }
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def read_state_json(path: Path, *, default: dict[str, Any]) -> dict[str, Any]:
+    """Quarantine a corrupt durable state file, log it, then return a safe default."""
+    if not path.is_file():
+        return copy.deepcopy(default)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(data, dict):
+            raise ValueError("state root is not an object")
+        return data
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        quarantined: Path | None = None
+        try:
+            stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+            quarantined = path.with_name(f"{path.name}.corrupt.{stamp}")
+            suffix = 1
+            while quarantined.exists():
+                quarantined = path.with_name(f"{path.name}.corrupt.{stamp}.{suffix}")
+                suffix += 1
+            os.replace(path, quarantined)
+        except OSError:
+            quarantined = None
+        _record_state_recovery(path, type(exc).__name__, quarantined)
+        return copy.deepcopy(default)
 
 
 DEFAULT_STATE: dict[str, Any] = {
@@ -47,18 +107,19 @@ DEFAULT_STATE: dict[str, Any] = {
 
 def merge_state(path: Path, patch: dict[str, Any]) -> dict[str, Any]:
     """Atomically merge a shallow state patch without dropping peer fields."""
-    state = read_json(path, default=DEFAULT_STATE)
-    state.setdefault("schema_version", 1)
-    state.setdefault("downloads", {})
-    for key, value in patch.items():
-        if key == "downloads" and isinstance(value, dict):
-            downloads = state.setdefault("downloads", {})
-            if not isinstance(downloads, dict):
-                downloads = state["downloads"] = {}
-            downloads.update(value)
-        else:
-            state[key] = value
-    atomic_write_json(path, state)
+    with _STATE_LOCK:
+        state = read_state_json(path, default=DEFAULT_STATE)
+        state.setdefault("schema_version", 1)
+        state.setdefault("downloads", {})
+        for key, value in patch.items():
+            if key == "downloads" and isinstance(value, dict):
+                downloads = state.setdefault("downloads", {})
+                if not isinstance(downloads, dict):
+                    downloads = state["downloads"] = {}
+                downloads.update(value)
+            else:
+                state[key] = value
+        atomic_write_json(path, state)
     return state
 
 

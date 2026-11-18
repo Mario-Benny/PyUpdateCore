@@ -15,7 +15,6 @@
     "channel": "stable"
   },
   "download": {
-    "mode": "auto",
     "default_threads": 4,
     "allowed_threads": [1, 4, 16],
     "fallback_to_single": true,
@@ -27,7 +26,6 @@
     "segment_storage": "separate_files",
     "min_segment_size_mb": 1,
     "verify_etag": true,
-    "merge_after_download": true,
     "delete_parts_after_merge": true
   },
   "security": {
@@ -37,6 +35,7 @@
   },
   "installer": {
     "wait_for_main_program": true,
+    "wait_timeout_seconds": 600,
     "request_admin": true,
     "arguments": [],
     "delete_after_install": false

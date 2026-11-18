@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ConfigError
-from .storage import atomic_write_json, read_json
+from .storage import atomic_write_json, read_config_json
 
 SCHEMA_VERSION = 1
 USERDATA_SCHEMA_VERSION = 1
@@ -18,9 +18,9 @@ def config_template() -> dict[str, Any]:
         "application": {"id": "your.application.id", "name": "Your Application"},
         "current_version": {"source": "command_line", "value": "", "path": "", "json_key": "version"},
         "update_source": {"provider": "manifest", "manifest_url": "", "channel": "stable", "repository": "", "asset_pattern": "", "sha256_asset_pattern": "*.sha256", "release_tag": ""},
-        "download": {"mode": "auto", "default_threads": 4, "allowed_threads": [1, 4, 16], "fallback_to_single": True, "resume": True, "retry_count": 5, "timeout_seconds": 30, "stall_timeout_seconds": 60, "max_file_size_mb": 2048, "segment_storage": "separate_files", "min_segment_size_mb": 1, "verify_etag": True, "merge_after_download": True, "delete_parts_after_merge": True},
+        "download": {"default_threads": 4, "allowed_threads": [1, 4, 16], "fallback_to_single": True, "resume": True, "retry_count": 5, "timeout_seconds": 30, "stall_timeout_seconds": 60, "max_file_size_mb": 2048, "segment_storage": "separate_files", "min_segment_size_mb": 1, "verify_etag": True, "delete_parts_after_merge": True},
         "security": {"require_https": True, "require_sha256": True, "allowed_hosts": [], "signature_required": False, "trusted_manifest_keys": {}},
-        "installer": {"wait_for_main_program": True, "request_admin": True, "arguments": [], "delete_after_install": False},
+        "installer": {"wait_for_main_program": True, "wait_timeout_seconds": 600, "request_admin": True, "arguments": [], "delete_after_install": False},
         "restart": {"enabled": False, "program_path": "", "arguments": []},
         "interface": {"language": "zh-CN", "show_progress": True, "confirm_before_download": True, "confirm_before_install": True},
         "logging": {"enabled": True, "retention_days": 14},
@@ -75,6 +75,13 @@ def _positive_int(section: dict[str, Any], name: str) -> int:
     return value
 
 
+def _positive_int_or_default(section: dict[str, Any], name: str, default: int) -> int:
+    value = section.get(name, default)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ConfigError(f"配置字段必须为正整数：{name}")
+    return value
+
+
 def _arguments(section: dict[str, Any], name: str) -> tuple[str, ...]:
     value = section.get(name, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -103,13 +110,11 @@ class UpdaterConfig:
     timeout_seconds: int
     stall_timeout_seconds: int
     max_file_size_bytes: int
-    download_mode: str
     default_threads: int
     allowed_threads: tuple[int, ...]
     fallback_to_single: bool
     min_segment_size_bytes: int
     verify_etag: bool
-    merge_after_download: bool
     delete_parts_after_merge: bool
     require_https: bool
     require_sha256: bool
@@ -148,9 +153,6 @@ def _load_config_data(data: dict[str, Any], path: Path) -> UpdaterConfig:
     if provider not in {"manifest", "github_release"}:
         raise ConfigError("update_source.provider 不受支持")
     download = _section(data, "download")
-    mode = _string(download, "mode")
-    if mode not in {"auto", "single", "range"}:
-        raise ConfigError("download.mode 不受支持")
     allowed_threads_raw = download.get("allowed_threads")
     if not isinstance(allowed_threads_raw, list) or not allowed_threads_raw or any(item not in {1, 4, 16} for item in allowed_threads_raw):
         raise ConfigError("download.allowed_threads 仅允许 1、4、16")
@@ -186,21 +188,21 @@ def _load_config_data(data: dict[str, Any], path: Path) -> UpdaterConfig:
         provider=provider, manifest_url=_string(update, "manifest_url", required=False), channel=_string(update, "channel"),
         repository=_string(update, "repository", required=False), asset_pattern=_string(update, "asset_pattern", required=False), sha256_asset_pattern=_string(update, "sha256_asset_pattern", required=False), release_tag=_string(update, "release_tag", required=False),
         resume=_bool(download, "resume"), retry_count=_positive_int(download, "retry_count"), timeout_seconds=_positive_int(download, "timeout_seconds"), stall_timeout_seconds=_positive_int(download, "stall_timeout_seconds"), max_file_size_bytes=_positive_int(download, "max_file_size_mb") * 1024 * 1024,
-        download_mode=mode, default_threads=default_threads, allowed_threads=tuple(allowed_threads_raw), fallback_to_single=_bool(download, "fallback_to_single"), min_segment_size_bytes=_positive_int(download, "min_segment_size_mb") * 1024 * 1024, verify_etag=_bool(download, "verify_etag"), merge_after_download=_bool(download, "merge_after_download"), delete_parts_after_merge=_bool(download, "delete_parts_after_merge"),
+        default_threads=default_threads, allowed_threads=tuple(allowed_threads_raw), fallback_to_single=_bool(download, "fallback_to_single"), min_segment_size_bytes=_positive_int(download, "min_segment_size_mb") * 1024 * 1024, verify_etag=_bool(download, "verify_etag"), delete_parts_after_merge=_bool(download, "delete_parts_after_merge"),
         require_https=True, require_sha256=True, allowed_hosts=frozenset(host.lower().strip() for host in hosts),
         wait_for_main_program=_bool(installer, "wait_for_main_program"), request_admin=_bool(installer, "request_admin"), installer_arguments=_arguments(installer, "arguments"), delete_after_install=_bool(installer, "delete_after_install"),
         restart_enabled=_bool(restart, "enabled"), restart_program_path=_string(restart, "program_path", required=False), restart_arguments=_arguments(restart, "arguments"),
         language=_string(interface, "language"), show_progress=_bool(interface, "show_progress"), confirm_before_download=_bool(interface, "confirm_before_download"), confirm_before_install=_bool(interface, "confirm_before_install"),
-        logging_enabled=_bool(logging, "enabled"), logging_retention_days=_positive_int(logging, "retention_days"), signature_required=_bool(security, "signature_required"), trusted_manifest_keys=dict(trusted_keys), wait_timeout_seconds=600, download_channel=channel, proxy_mode=proxy_mode, proxy_url=_string(network, "proxy_url", required=False),
+        logging_enabled=_bool(logging, "enabled"), logging_retention_days=_positive_int(logging, "retention_days"), signature_required=_bool(security, "signature_required"), trusted_manifest_keys=dict(trusted_keys), wait_timeout_seconds=_positive_int_or_default(installer, "wait_timeout_seconds", 600), download_channel=channel, proxy_mode=proxy_mode, proxy_url=_string(network, "proxy_url", required=False),
     )
 
 
 def load_config(path: Path) -> UpdaterConfig:
-    return _load_config_data(read_json(path), path)
+    return _load_config_data(read_config_json(path), path)
 
 
 def load_split_config(userdata_path: Path, coredata_path: Path) -> UpdaterConfig:
-    user, core = read_json(userdata_path), read_json(coredata_path)
+    user, core = read_config_json(userdata_path), read_config_json(coredata_path)
     if user.get("schema_version") != USERDATA_SCHEMA_VERSION or core.get("schema_version") != COREDATA_SCHEMA_VERSION:
         raise ConfigError("userdata.json 或 coredata.json schema_version 不受支持")
     merged: dict[str, Any] = {"schema_version": SCHEMA_VERSION}

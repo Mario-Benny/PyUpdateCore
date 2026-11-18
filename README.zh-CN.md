@@ -1,6 +1,6 @@
 # PyUpdateCore
 
-[English](README.md) · [接口协议](docs/IPC_PROTOCOL.md)
+[English](README.md) · [架构](docs/ARCHITECTURE.md) · [配置](docs/CONFIGURATION.md) · [接口协议](docs/IPC_PROTOCOL.md) · [安全说明](docs/SECURITY.md) · [1.0.1 更新说明](docs/RELEASE_NOTES_1.0.1.md)
 
 PyUpdateCore 是可打包为独立 `Updater.exe` 的 Windows 更新执行核心。Python、Java、C++、C#、Go、Rust 等调用方可通过 CLI 或 JSON Lines IPC 接入。
 

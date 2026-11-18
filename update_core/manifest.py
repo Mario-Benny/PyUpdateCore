@@ -54,6 +54,8 @@ def parse_manifest(payload: bytes, config: UpdaterConfig) -> UpdateManifest:
     stem = PurePath(name).stem.rstrip(" .") if isinstance(name, str) else ""
     if not isinstance(name, str) or not name or name != name.rstrip(" .") or PurePath(name).name != name or any(char in name for char in '\\/<>":|?*') or any(ord(char) < 32 for char in name) or _RESERVED.fullmatch(stem):
         raise ManifestError("安装器文件名不安全")
+    if not name.lower().endswith(".exe"):
+        raise ManifestError("当前版本仅允许 EXE 安装器")
     if not isinstance(url, str):
         raise ManifestError("安装器 URL 无效")
     if not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > config.max_file_size_bytes:
