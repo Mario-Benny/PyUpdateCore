@@ -1,0 +1,23 @@
+[project]
+name = "pyupdatacore"
+version = "0.0.0"
+description = "Standalone, configurable Windows updater core"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.28,<1", "cryptography>=44,<47"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["updater"]
+
+[tool.setuptools.packages.find]
+include = ["update_core*"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "pytest-httpx>=0.36", "pyinstaller>=6.22"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

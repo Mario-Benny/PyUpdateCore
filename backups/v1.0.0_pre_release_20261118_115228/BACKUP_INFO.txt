@@ -1,0 +1,2 @@
+Backup: 20261118_115228
+Release source, docs, examples, tests and metadata copied; release build and cache excluded.

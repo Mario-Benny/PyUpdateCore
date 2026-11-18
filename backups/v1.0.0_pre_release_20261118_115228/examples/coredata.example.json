@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "download": {"mode": "auto", "default_threads": 4, "allowed_threads": [1, 4, 16], "fallback_to_single": true, "resume": true, "retry_count": 5, "timeout_seconds": 30, "stall_timeout_seconds": 60, "max_file_size_mb": 2048, "segment_storage": "separate_files", "min_segment_size_mb": 1, "verify_etag": true, "merge_after_download": true, "delete_parts_after_merge": true},
+  "security": {"require_https": true, "require_sha256": true, "allowed_hosts": ["github.com", "objects.githubusercontent.com"], "signature_required": true, "trusted_manifest_keys": {"release-2026": "BASE64_ED25519_PUBLIC_KEY"}},
+  "logging": {"enabled": true, "retention_days": 14},
+  "network": {"download_channel": "native", "proxy_mode": "system", "proxy_url": "", "browser": {"type": "auto", "mode": "proxy_probe"}}
+}

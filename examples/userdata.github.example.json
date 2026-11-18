@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "application": {"id": "example.application", "name": "Example Application"},
+  "current_version": {"source": "json_file", "path": "../version.json", "json_key": "version"},
+  "update_source": {"provider": "github_release", "manifest_url": "", "channel": "stable", "repository": "owner/repository", "asset_pattern": "Example-Setup-*.exe", "sha256_asset_pattern": "Example-Setup-*.exe.sha256", "release_tag": ""},
+  "installer": {"wait_for_main_program": true, "request_admin": true, "arguments": [], "delete_after_install": false},
+  "restart": {"enabled": false, "program_path": "", "arguments": []},
+  "interface": {"language": "zh-CN", "show_progress": true, "confirm_before_download": true, "confirm_before_install": true}
+}

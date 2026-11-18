@@ -1,0 +1,2 @@
+619d79e68175e838f4edf0373dfcca7bc42cb3a0f97e2d7b44b55730518bc84b  PythonUpdateCore-1.0.0-Windows-x64.zip
+9587b6f46fde8fde95668b06794864152ecd5ea26be816a34ac63f75502970ce  PythonUpdateCore-1.0.0-Source.zip
